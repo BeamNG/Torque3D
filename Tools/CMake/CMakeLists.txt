@@ -25,4 +25,4 @@ endif()
 # the main engine, should come last
 include(torque3d.cmake)
 
-#setupPackaging() 
+#setupPackaging()
