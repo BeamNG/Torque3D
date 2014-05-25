@@ -26,3 +26,4 @@ endif()
 include(torque3d.cmake)
 
 #setupPackaging()  
+
