@@ -13,4 +13,3 @@ ENDIF(NOT DEFINED CMAKE_INSTALL_PREFIX)
 project(${TORQUE_APP_NAME})
 
 add_subdirectory(Tools/CMake)
-
