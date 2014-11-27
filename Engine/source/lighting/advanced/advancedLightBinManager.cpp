@@ -254,8 +254,10 @@ void AdvancedLightBinManager::render( SceneRenderState *state )
       return;
 
    // Clear as long as there isn't MRT population of light buffer with lightmap data
-   if (!MRTLightmapsDuringPrePass() || GFX->getAdapterType() == OpenGL)
-      GFX->clear(GFXClearTarget, ColorI(0, 0, 0, 0), 1.0f, 0);
+   //if (!MRTLightmapsDuringPrePass() || GFX->getAdapterType() == OpenGL)
+   // HACK: if commented to avoid accumulation values from frames on Advanced Lightmap Support.
+   //       necessary to make it works on OpenGL
+   GFX->clear(GFXClearTarget, ColorI(0, 0, 0, 0), 1.0f, 0);
 
    // Restore transforms
    MatrixSet &matrixSet = getRenderPass()->getMatrixSet();
