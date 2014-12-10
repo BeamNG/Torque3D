@@ -46,11 +46,6 @@ MODULE_BEGIN( ShadowMapManager )
    {
       ManagedSingleton< ShadowMapManager >::createSingleton();
    }
-   
-   MODULE_SHUTDOWN
-   {
-      ManagedSingleton< ShadowMapManager >::deleteSingleton();
-   }
 
 MODULE_END;
 
