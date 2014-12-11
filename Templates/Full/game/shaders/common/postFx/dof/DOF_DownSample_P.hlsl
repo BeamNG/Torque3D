@@ -85,7 +85,7 @@ half4 main( Pixel IN ) : COLOR
       depth[1] = prepassUncondition( depthSampler, float4( IN.tcDepth1.xy + rowOfs[i], 0, 0 ) ).w;
       depth[2] = prepassUncondition( depthSampler, float4( IN.tcDepth2.xy + rowOfs[i], 0, 0 ) ).w;
       depth[3] = prepassUncondition( depthSampler, float4( IN.tcDepth3.xy + rowOfs[i], 0, 0 ) ).w;
-      coc[i] = clamp( dofEqWorld.x * depth + dofEqWorld.y, 0.0, maxWorldCoC );  
+      coc[i] = clamp( dofEqWorld.x * depth[i] + dofEqWorld.y, 0.0, maxWorldCoC );  
    }   
    
    /*
