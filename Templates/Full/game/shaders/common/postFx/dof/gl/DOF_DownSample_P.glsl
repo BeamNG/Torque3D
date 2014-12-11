@@ -90,7 +90,7 @@ void main()
       depth[1] = prepassUncondition( depthSampler, ( IN_tcDepth1.xy + rowOfs[i] ) ).w;
       depth[2] = prepassUncondition( depthSampler, ( IN_tcDepth2.xy + rowOfs[i] ) ).w;
       depth[3] = prepassUncondition( depthSampler, ( IN_tcDepth3.xy + rowOfs[i] ) ).w;
-      coc[i] = clamp( dofEqWorld.x * depth + dofEqWorld.y, 0.0, maxWorldCoC );  
+      coc[i] = clamp( dofEqWorld.x * depth[i] + dofEqWorld.y, 0.0, maxWorldCoC );  
    }   
    
    /*
