@@ -183,15 +183,32 @@ void GFXGLTextureManager::innerCreateTexture( GFXGLTextureObject *retTex,
         }
         else
         {   
-            if(binding == GL_TEXTURE_2D)
-                glTexImage2D(binding, 0, GFXGLTextureInternalFormat[format], width, height, 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
-            else if(binding == GL_TEXTURE_1D)
-                glTexImage1D(binding, 0, GFXGLTextureInternalFormat[format], (width > 1 ? width : height), 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
-            else
-                glTexImage3D(GL_TEXTURE_3D, 0, GFXGLTextureInternalFormat[format], width, height, depth, 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
+			// glGenerateMipmap on Intel cause crash during texture loading inside the driver.
+			static String vendorStr = (const char*)glGetString(GL_VENDOR);
+			if (vendorStr.find("INTEL", 0, String::NoCase | String::Left) == String::NPos)
+			{
+				if (retTex->mMipLevels > 1)
+					glGenerateMipmap(binding);
+			}
+			else
+			{
+				for (U32 i = 0; i < retTex->getMipLevels(); i++)
+				{
+					U32 tempWidth = width;
+					U32 tempHeight = height;
+					U32 tempDepth = depth;
+					tempWidth = getMax(U32(1), width >> i);
+					tempHeight = getMax(U32(1), height >> i);
+					tempDepth = getMax(U32(1), depth >> i);
 
-            if(retTex->mMipLevels > 1)
-                glGenerateMipmap(binding);
+					if (binding == GL_TEXTURE_2D)
+						glTexImage2D(binding, i, GFXGLTextureInternalFormat[format], tempWidth, tempHeight, 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
+					else if (binding == GL_TEXTURE_1D)
+						glTexImage1D(binding, i, GFXGLTextureInternalFormat[format], (tempWidth > 1 ? tempWidth : tempHeight), 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
+					else
+						glTexImage3D(GL_TEXTURE_3D, i, GFXGLTextureInternalFormat[format], tempWidth, tempHeight, tempDepth, 0, GFXGLTextureFormat[format], GFXGLTextureType[format], NULL);
+				}
+			}
         }
     }
    
@@ -226,38 +243,85 @@ void GFXGLTextureManager::innerCreateTexture( GFXGLTextureObject *retTex,
 // loadTexture - GBitmap
 //-----------------------------------------------------------------------------
 
-static void _fastTextureLoad(GFXGLTextureObject* texture, GBitmap* pDL)
+static void _fastTextureLoad(GFXGLTextureObject* texture, GBitmap* pDL, bool manualMip)
 {
    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, texture->getBuffer());
-   U32 bufSize = pDL->getWidth(0) * pDL->getHeight(0) * pDL->getBytesPerPixel();
-   glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, bufSize, NULL, GL_STREAM_DRAW);
-   
-   if(pDL->getFormat() == GFXFormatR8G8B8A8 || pDL->getFormat() == GFXFormatR8G8B8X8)
+
+   if (!manualMip)
    {
-      FrameAllocatorMarker mem;
-      U8* pboMemory = (U8*)mem.alloc(bufSize);
-      GFX->getDeviceSwizzle32()->ToBuffer(pboMemory, pDL->getBits(0), bufSize);
-      glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pboMemory );
+	   U32 bufSize = pDL->getWidth(0) * pDL->getHeight(0) * pDL->getBytesPerPixel();
+	   glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, bufSize, NULL, GL_STREAM_DRAW);
+
+	   if (pDL->getFormat() == GFXFormatR8G8B8A8 || pDL->getFormat() == GFXFormatR8G8B8X8)
+	   {
+	       FrameAllocatorMarker mem;
+		   U8* pboMemory = (U8*)mem.alloc(bufSize);
+		   GFX->getDeviceSwizzle32()->ToBuffer(pboMemory, pDL->getBits(0), bufSize);
+		   glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pboMemory);
+	   }
+	   else
+	   {
+		   glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pDL->getBits(0));
+	   }
+   
+	   if (texture->getBinding() == GL_TEXTURE_2D)
+		   glTexSubImage2D(texture->getBinding(), 0, 0, 0, pDL->getWidth(0), pDL->getHeight(0), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
+	   else
+		   glTexSubImage1D(texture->getBinding(), 0, 0, (pDL->getWidth(0) > 1 ? pDL->getWidth(0) : pDL->getHeight(0)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
+	   
+	   glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+	   glGenerateMipmap(texture->getBinding());
    }
    else
    {
-      glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pDL->getBits(0) );
+	   for (U32 i = 0; i < texture->getMipLevels(); i++)
+	   {
+		   U32 bufSize = pDL->getWidth(i) * pDL->getHeight(i) * pDL->getBytesPerPixel();
+		   glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, bufSize, NULL, GL_STREAM_DRAW);
+
+		   if (pDL->getFormat() == GFXFormatR8G8B8A8 || pDL->getFormat() == GFXFormatR8G8B8X8)
+		   {
+			   FrameAllocatorMarker mem;
+			   U8* pboMemory = (U8*)mem.alloc(bufSize);
+			   GFX->getDeviceSwizzle32()->ToBuffer(pboMemory, pDL->getBits(i), bufSize);
+			   glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pboMemory);
+		   }
+		   else
+		   {
+			   glBufferSubData(GL_PIXEL_UNPACK_BUFFER_ARB, 0, bufSize, pDL->getBits(i));
+		   }
+
+		   if (texture->getBinding() == GL_TEXTURE_2D)
+			   glTexSubImage2D(texture->getBinding(), i, 0, 0, pDL->getWidth(i), pDL->getHeight(i), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
+		   else
+			   glTexSubImage1D(texture->getBinding(), i, 0, (pDL->getWidth(i) > 1 ? pDL->getWidth(i) : pDL->getHeight(i)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
+	   }
+
+	   glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
    }
-   
-   if(texture->getBinding() == GL_TEXTURE_2D)
-	   glTexSubImage2D(texture->getBinding(), 0, 0, 0, pDL->getWidth(0), pDL->getHeight(0), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
-   else
-	   glTexSubImage1D(texture->getBinding(), 0, 0, (pDL->getWidth(0) > 1 ? pDL->getWidth(0) : pDL->getHeight(0)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], NULL);
-   
-   glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
 }
 
-static void _slowTextureLoad(GFXGLTextureObject* texture, GBitmap* pDL)
+static void _slowTextureLoad(GFXGLTextureObject* texture, GBitmap* pDL, bool manualMip)
 {
-	if(texture->getBinding() == GL_TEXTURE_2D)
-		glTexSubImage2D(texture->getBinding(), 0, 0, 0, pDL->getWidth(0), pDL->getHeight(0), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(0));
+	if (!manualMip)
+	{
+		if (texture->getBinding() == GL_TEXTURE_2D)
+			glTexSubImage2D(texture->getBinding(), 0, 0, 0, pDL->getWidth(0), pDL->getHeight(0), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(0));
+		else
+			glTexSubImage1D(texture->getBinding(), 0, 0, (pDL->getWidth(0) > 1 ? pDL->getWidth(0) : pDL->getHeight(0)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(0));
+
+		glGenerateMipmap(texture->getBinding());
+	}
 	else
-		glTexSubImage1D(texture->getBinding(), 0, 0, (pDL->getWidth(0) > 1 ? pDL->getWidth(0) : pDL->getHeight(0)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(0));
+	{
+		for (U32 i = 0; i < pDL->getNumMipLevels(); i++)
+		{
+			if (texture->getBinding() == GL_TEXTURE_2D)
+				glTexSubImage2D(texture->getBinding(), i, 0, 0, pDL->getWidth(i), pDL->getHeight(i), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(i));
+			else
+				glTexSubImage1D(texture->getBinding(), i, 0, (pDL->getWidth(i) > 1 ? pDL->getWidth(i) : pDL->getHeight(i)), GFXGLTextureFormat[pDL->getFormat()], GFXGLTextureType[pDL->getFormat()], pDL->getBits(i));
+		}
+	}
 }
 
 bool GFXGLTextureManager::_loadTexture(GFXTextureObject *aTexture, GBitmap *pDL)
@@ -277,14 +341,15 @@ bool GFXGLTextureManager::_loadTexture(GFXTextureObject *aTexture, GBitmap *pDL)
    PRESERVE_TEXTURE(texture->getBinding());
    glBindTexture(texture->getBinding(), texture->getHandle());
 
+   // glGenerateMipmap on Intel cause crash during texture loading inside the driver.
+   static String vendorStr = (const char*)glGetString(GL_VENDOR);
+   static bool manualMip = vendorStr.find("INTEL", 0, String::NoCase | String::Left) != String::NPos;
+
    texture->mFormat = pDL->getFormat();
    if(pDL->getFormat() == GFXFormatR8G8B8A8 || pDL->getFormat() == GFXFormatR8G8B8X8)
-      _fastTextureLoad(texture, pDL);
+      _fastTextureLoad(texture, pDL, manualMip);
    else
-      _slowTextureLoad(texture, pDL);
-
-   if(texture->getMipLevels() != 1)
-      glGenerateMipmap(texture->getBinding());
+      _slowTextureLoad(texture, pDL, manualMip);
    
    return true;
 }
@@ -304,8 +369,7 @@ bool GFXGLTextureManager::_loadTexture(GFXTextureObject *aTexture, DDSFile *dds)
    glBindTexture(texture->getBinding(), texture->getHandle());
    texture->mFormat = dds->mFormat;
    U32 numMips = dds->mSurfaces[0]->mMips.size();
-   if(GFX->getCardProfiler()->queryProfile("GL::Workaround::noManualMips"))
-      numMips = 1;
+
    for(U32 i = 0; i < numMips; i++)
    {
       if(isCompressedFormat(dds->mFormat))
@@ -336,9 +400,6 @@ bool GFXGLTextureManager::_loadTexture(GFXTextureObject *aTexture, DDSFile *dds)
          glTexSubImage2D(texture->getBinding(), i, 0, 0, dds->getWidth(i), dds->getHeight(i), GFXGLTextureFormat[dds->mFormat], GFXGLTextureType[dds->mFormat], dds->mSurfaces[0]->mMips[i]);
    }
 
-   if(numMips !=1 && !isCompressedFormat(dds->mFormat))
-      glGenerateMipmap(texture->getBinding());
-   
    return true;
 }
 
