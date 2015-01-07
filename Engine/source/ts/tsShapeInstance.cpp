@@ -104,7 +104,7 @@ Vector<TSThread*>             TSShapeInstance::smScaleThreads(__FILE__, __LINE__
 // constructors, destructors, initialization
 //-------------------------------------------------------------------------------------
 
-TSShapeInstance::TSShapeInstance( const Resource<TSShape> &shape, bool loadMaterials )
+TSShapeInstance::TSShapeInstance( const Resource<TSShape> &shape, bool loadMaterials ) : mUserObject(NULL)
 {
    VECTOR_SET_ASSOCIATION(mMeshObjects);
    VECTOR_SET_ASSOCIATION(mNodeTransforms);
